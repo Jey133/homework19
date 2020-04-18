@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>homework19</title>
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding-top: 48px;
+            margin: 0;
+        }
+        input, button {
+            font-size: 24px;
+        }
+        .note-list {
+            margin-top: 48px;
+            font-size: 20px;
+            list-style: none;
+        }
+        .note-list__item.note-list__item--completed {
+            color: grey;
+            text-decoration: line-through;
+        }
+        .hide {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <form class="form-login">
+        <input type="email" placeholder="Enter your email" value="jey133@gmail.com">
+        <button>Login</button>
+    </form>
+
+    <form class="form-task hide">
+        <input type="text" placeholder="Enter your note">
+        <button type="submit">Add note</button>
+    </form>
+    <ul class="note-list"></ul>
+
+<script>
+
+const BASE_URL = 'https://todo.hillel.it';
+let token = '';
+
+const loginForm = document.querySelector('.form-login');
+const taskForm = document.querySelector('.form-task');
+const loginInput = document.querySelector('.form-login input');
+const taskInput = document.querySelector('.form-task input');
+
+const noteList = document.querySelector('ul');
+
+let taskList = [];
+let currentIndex = 0;
+
+loginForm.addEventListener('submit', e => {
+    e.preventDefault();
+    authorize();
+});
+
+taskForm.addEventListener('submit', e => {
+    e.preventDefault();
+    if (taskInput.value.trim()) {
+        const task = {
+            value: taskInput.value,
+            checked: false,
+            id: currentIndex
+        };
+        currentIndex++;
+        addTask(taskInput.value);      
+    }  
+});
+
+//API methods start
+
+function authorize () {
+    fetch(`${BASE_URL}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-type': 'application/json' },
+        body: JSON.stringify({
+            value: loginInput.value
+        })
+    }).then(response => response.json())
+        .then(data => {
+            token = `Bearer ${data.access_token}`;     
+            loginForm.classList.add('hide');
+            taskForm.classList.remove('hide');
+            fetchTodoList();
+        })
+};
+
+function fetchTodoList () {
+    fetch(`${BASE_URL}/todo`, {
+        method: 'GET',
+        headers: {
+            'Content-type': 'application/json',
+            'Authorization': token
+        },
+    }).then(response => response.json())
+        .then(data => {
+            taskList = data;
+            if(taskList.length > 0){
+                currentIndex = taskList[taskList.length - 1]._id + 1;
+            }
+            taskList.forEach(task => noteList.prepend(renderTask(task)));
+        });
+};
+
+function addTask (value) {
+    fetch(`${BASE_URL}/todo`, {
+        method: 'POST',
+        headers: {
+            'Content-type': 'application/json',
+            'Authorization': token
+        },
+        body: JSON.stringify({
+            "value": value,
+            "priority": 1
+        })
+    }).then(response => response.json())
+        .then(task => {
+            taskList.unshift(task);
+            noteList.prepend(renderTask(task));
+            taskInput.value = '';
+        });
+};
+
+function remove (taskId) {
+    fetch(`${BASE_URL}/todo/` + taskId, {
+        method: 'DELETE',
+        headers: {
+            'Content-type': 'application/json',
+            'Authorization': token
+        }
+    }).then(response => response.json())
+        .then(task => {     
+        });
+};
+
+function editTask (task) {
+    fetch(`${BASE_URL}/todo/` + task._id, {
+        method: 'PUT',
+        headers: {
+            'Content-type': 'application/json',
+            'Authorization': token
+        },
+        body: JSON.stringify({
+            "value": task.value,
+            "priority": 1,
+            "checked":task.checked
+        })
+    }).then(response => response.json())
+        .then(task => {
+        });
+};
+
+function completeTask (taskId) {
+    fetch(`${BASE_URL}/todo/` + taskId + '/toggle', {
+        method: 'PUT',
+        headers: {
+            'Content-type': 'application/json',
+            'Authorization': token
+        }
+    }).then(response => response.json())
+        .then(task => {
+        });
+};
+
+//API methods end
+
+function renderTask(taskObject) {
+    console.log('rendertask');
+    let taskItem = document.createElement('li');
+    taskItem.classList.add('note-list__item');
+    taskItem.setAttribute('data-id', taskObject._id);
+
+    let taskItemContent = document.createElement('span');  
+    taskItemContent.innerText = taskObject.value;
+
+    taskItem.appendChild(taskItemContent);
+    
+    createButton('complete', taskItem, taskObject._id);
+    createButton('remove', taskItem, taskObject._id);
+    createButton('edit', taskItem, taskObject._id);
+
+    if(taskObject.checked) {
+        taskItem.classList.add('note-list__item--completed');
+    }
+
+    if(taskObject.isEdit) {
+        let editWrapper = document.createElement('div');
+        editWrapper.setAttribute('id', 'editWrapper' + taskObject._id);
+
+        let editInput = document.createElement('input');
+        editInput.setAttribute('id', 'editInput' + taskObject._id);
+        editInput.value = taskObject.value;
+
+        editWrapper.appendChild(editInput);
+        createButton('save', editWrapper, taskObject._id);
+        createButton('cancel', editWrapper, taskObject._id);
+
+        taskItem.appendChild(editWrapper);
+    }
+
+    if (taskObject.isSave) {
+        taskItemContent.innerText = taskObject.newVal;
+        taskObject.value = taskObject.newVal;
+        editTask(taskObject);
+    }
+    return taskItem;
+};
+
+function handleClickButton (buttonId) {
+    let buttonName = buttonId.split("-")[0];
+    let parentDataId = Number(buttonId.split("-")[1]);
+
+    if (buttonName === 'complete') {
+        let taskObject = taskList.find(task => task._id === parentDataId);
+        taskObject.checked = true;
+        completeTask(parentDataId);  
+    } else if (buttonName === 'remove') {
+        remove(parentDataId);
+        taskList = taskList.filter(task => task._id !== parentDataId);
+    } else if (buttonName === 'edit') {
+        taskList.find(task => task._id === parentDataId).isEdit = true;
+    } else if (buttonName === 'save') {
+        let currentTask = taskList.find(task => task._id === parentDataId);
+        currentTask.isEdit = false;
+        currentTask.isSave = true;
+        currentTask.newVal = document.getElementById('editInput' + parentDataId).value;
+    } else if (buttonName === 'cancel') {
+        taskList.find(task => task._id === parentDataId).isEdit = false;
+    }
+    noteList.innerHTML = '';
+    taskList.forEach(task => {
+        noteList.append(renderTask(task));
+    });
+};
+
+function createButton (buttonName, parentElem, parentDataId) {
+    let buttonId = "'" + buttonName + "-" + parentDataId + "'";
+    let button = document.createElement('button');
+    button.classList.add(buttonName);
+    button.innerText = buttonName;
+    button.setAttribute('data-id', buttonId);
+    button.setAttribute('onclick', 'handleClickButton('+buttonId+')');
+    parentElem.appendChild(button);
+};
+
+</script>
+</body>
+</html>
